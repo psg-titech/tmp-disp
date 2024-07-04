@@ -65,6 +65,7 @@ UART_HandleTypeDef huart2;
 static uint8_t txData[200], rxData[200];
 static char printBuf[32];
 static struct bme280_dev dev;
+static int buttonPressed = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -271,6 +272,17 @@ void lcd_init()
     HAL_Delay(1);
     lcd_send_cmd (0x0C); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
 }
+
+/* Interrupt handler ---------------------------------------------------------*/
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == B1_Pin)
+  {
+    buttonPressed = 1;
+  }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -314,6 +326,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	if (buttonPressed) {
+		buttonPressed = 0;
+		lcd_clear();
+		lcd_put_cur(0, 0);
+		HAL_Delay(1);
+		lcd_send_string("PRESSED!");
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_Delay(1000);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+	}
+
     rslt = bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
     bme280_error_codes_print_result("bme280_set_sensor_mode", rslt);
 
@@ -515,6 +538,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
