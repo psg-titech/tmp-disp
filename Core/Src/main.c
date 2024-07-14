@@ -25,6 +25,14 @@
 #include <stdio.h>
 #include <string.h>
 #include "bme280.h"
+
+#define USE_XCIOS
+
+#ifdef USE_XCIOS
+#include "TmpDisp.h"
+#else
+#include "TmpDisp.h"
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +68,7 @@
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim21;
 
 UART_HandleTypeDef huart2;
 
@@ -67,7 +76,8 @@ UART_HandleTypeDef huart2;
 static uint8_t txData[200], rxData[200];
 static char printBuf[32];
 static struct bme280_dev dev;
-static int buttonPressed = 0;
+static volatile int buttonPressed = 0;
+static volatile int clock = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,6 +86,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM21_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -192,10 +203,13 @@ void init_bme280(struct bme280_dev *dev) {
   settings.osr_t = BME280_OVERSAMPLING_1X;
 
   /* Setting the standby time */
-  settings.standby_time = BME280_STANDBY_TIME_1000_MS;
+  settings.standby_time = BME280_STANDBY_TIME_125_MS;
 
-  bme280_set_sensor_settings(BME280_SEL_ALL_SETTINGS, &settings, dev);
+  rslt = bme280_set_sensor_settings(BME280_SEL_ALL_SETTINGS, &settings, dev);
   bme280_error_codes_print_result("bme280_set_sensor_settings", rslt);
+
+  rslt = bme280_set_sensor_mode(BME280_POWERMODE_NORMAL, dev);
+  bme280_error_codes_print_result("bme280_set_sensor_mode", rslt);
 }
 
 /* LCD 1602A -----------------------------------------------------------------*/
@@ -274,17 +288,147 @@ void lcd_init()
     lcd_send_cmd (0x06); //Entry mode set --> I/D = 1 (increment cursor) & S = 0 (no shift)
     HAL_Delay(1);
     lcd_send_cmd (0x0C); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
+    HAL_Delay(1);
+}
+
+void lcd_off() {
+    lcd_send_cmd(0x08);
+    HAL_Delay(1);
 }
 
 /* Interrupt handler ---------------------------------------------------------*/
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  if (GPIO_Pin == B1_Pin)
+  if (GPIO_Pin == GPIO_PIN_1)
   {
     buttonPressed = 1;
   }
 }
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim == &htim21)
+    {
+        clock++;
+    }
+}
+
+/* XStorm callbacks ----------------------------------------------------------*/
+
+int read_clock() {
+	return clock;
+}
+
+int read_button() {
+	if (buttonPressed)
+	{
+		buttonPressed = 0;
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+struct TupleDoubleDouble* fetch_tmphmd() {
+	struct bme280_data comp_data;
+	int8_t rslt = BME280_E_NULL_PTR;
+
+    /* Measurement time delay given to read sample */
+    HAL_Delay(125);
+    /* Read compensated data */
+    rslt = bme280_get_sensor_data(BME280_HUM | BME280_TEMP, &comp_data, &dev);
+	bme280_error_codes_print_result("bme280_get_sensor_data", rslt);
+
+    return TupleDoubleDouble_Cons(comp_data.temperature, comp_data.humidity);
+}
+
+void turnon_lcd() {
+	lcd_init();
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 2096);
+}
+
+void turnoff_lcd() {
+	lcd_off();
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
+}
+
+void display_tmphmd(struct TupleDoubleDouble *tmphmd) {
+	lcd_clear();
+
+    sprintf(printBuf, "TMP: %d \xdf""C", (int)tmphmd->member0);
+    lcd_put_cur(0, 0);
+    HAL_Delay(1);
+    lcd_send_string(printBuf);
+    HAL_Delay(10);
+
+    sprintf(printBuf, "HMD: %d %%", (int)tmphmd->member1);
+    lcd_put_cur(1, 0);
+    HAL_Delay(1);
+    lcd_send_string(printBuf);
+    HAL_Delay(10);
+}
+
+#ifndef USE_XCIOS
+
+void input(int* clk, int* show, struct TupleDoubleDouble** tmphmd) {
+	*clk = read_clock();
+    *show = read_button();
+	*tmphmd = fetch_tmphmd();
+}
+
+void output(struct TupleDoubleDouble** tmphmd /* , int* nextTmpHmdDispMode */) {
+	// static int currTmpHmdDispMode = 0;
+    // if (currTmpHmdDispMode == 1) {
+	    display_tmphmd(*tmphmd);
+    // }
+
+	/*
+	if (currTmpHmdDispMode == 0 && *nextTmpHmdDispMode == 1)
+	{
+		turnon_lcd();
+	}
+	if (currTmpHmdDispMode == 1 && *nextTmpHmdDispMode == 0)
+	{
+		turnoff_lcd();
+	}
+	currTmpHmdDispMode = *nextTmpHmdDispMode;
+	*/
+}
+
+#endif
+
+/* XCios callbacks -----------------------------------------------------------*/
+
+#ifdef USE_XCIOS
+
+struct TupleDoubleDouble* input_tmpHmd() {
+	return fetch_tmphmd();
+}
+
+int input_show() {
+	return read_button();
+}
+
+int input_clock() {
+	return read_clock();
+}
+
+void output_tmpHmdDisp(struct TupleDoubleDouble* tmphmd) {
+	display_tmphmd(tmphmd);
+}
+
+void hook_tmpHmdDisp_ModeTmpDispOnOff_On_to_ModeTmpDispOnOff_Off() {
+	turnoff_lcd();
+}
+
+void hook_tmpHmdDisp_ModeTmpDispOnOff_Off_to_ModeTmpDispOnOff_On() {
+	turnon_lcd();
+}
+
+#endif
 
 /* USER CODE END 0 */
 
@@ -304,8 +448,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  struct bme280_data comp_data;
-  int8_t rslt = BME280_E_NULL_PTR;
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -320,54 +463,20 @@ int main(void)
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
+  MX_TIM21_Init();
   /* USER CODE BEGIN 2 */
   init_bme280(&dev);
-  lcd_init();
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 10);
+  HAL_TIM_Base_Start_IT(&htim21);
+  // turnon_lcd();
+
+  activate();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-
-    rslt = bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
-    bme280_error_codes_print_result("bme280_set_sensor_mode", rslt);
-
-    /* Measurement time delay given to read sample */
-    HAL_Delay(100);
-    /* Read compensated data */
-    rslt = bme280_get_sensor_data(BME280_HUM | BME280_TEMP, &comp_data, &dev);
-	bme280_error_codes_print_result("bme280_get_sensor_data", rslt);
-
-	if (buttonPressed) {
-		buttonPressed = 0;
-		lcd_init();
-		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 1000);
-		HAL_Delay(1);
-
-		sprintf(printBuf, "TMP: %d ""\xdf""C", (int)comp_data.temperature);
-		lcd_put_cur(0, 0);
-		HAL_Delay(1);
-		lcd_send_string(printBuf);
-		HAL_Delay(10);
-
-		sprintf(printBuf, "HMD: %d %%", (int)comp_data.humidity);
-		lcd_put_cur(1, 0);
-		HAL_Delay(1);
-		lcd_send_string(printBuf);
-		HAL_Delay(10);
-
-		HAL_Delay(3000);
-
-		lcd_send_cmd(0x08);
-		HAL_Delay(1);
-		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 10);
-	} else {
-		HAL_Delay(900);
-	}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -511,6 +620,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM21 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM21_Init(void)
+{
+
+  /* USER CODE BEGIN TIM21_Init 0 */
+
+  /* USER CODE END TIM21_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM21_Init 1 */
+
+  /* USER CODE END TIM21_Init 1 */
+  htim21.Instance = TIM21;
+  htim21.Init.Prescaler = 2097-1;
+  htim21.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim21.Init.Period = 1000-1;
+  htim21.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim21.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim21) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim21, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim21, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM21_Init 2 */
+
+  /* USER CODE END TIM21_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -571,11 +725,11 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
+  /*Configure GPIO pins : B1_Pin PC1 */
+  GPIO_InitStruct.Pin = B1_Pin|GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC7 PC8 PC9 */
   GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
@@ -599,6 +753,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 

@@ -1,0 +1,17 @@
+mode OnOff = Off | acc On
+
+switchmodule Main {
+  in clock: Int, show: Bool, tmpHmd: (Float, Float)
+  out tmpHmdDisp: 'OnOff (Float, Float)
+  init Sleep
+
+  state Sleep with tmpHmdDisp = Off {
+    switch: if show then Show(clock) else Retain
+  }
+
+  state Show(startClock: Int) with tmpHmdDisp = On {
+    out node tmpHmdDisp = tmpHmd
+    switch: if clock - startClock >= 5 then Sleep else Retain
+  }
+}
+
