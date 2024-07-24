@@ -13,7 +13,6 @@ struct StateTmpDispMain {
 
 struct MemoryTmpDispMainShow {
   int init;
-  int goSleep[2];
 };
 
 struct MemoryTmpDispMainSleep {
@@ -26,7 +25,6 @@ struct MemoryTmpDispMain {
   int show[2];
   struct TupleDoubleDouble* tmpHmd[2];
   struct TupleDoubleDouble* tmpHmdDisp[2];
-  int nextTmpHmdDispMode[2];
   struct StateTmpDispMain* state;
   union {
     struct MemoryTmpDispMainShow Show;
@@ -35,10 +33,8 @@ struct MemoryTmpDispMain {
 };
 
 int clock;
-int period = 8;
+int period = 6;
 int current_side;
-int TmpDisp_on;
-int TmpDisp_off;
 
 struct TupleDoubleDouble memory_TupleDoubleDouble[2];
 int size_TupleDoubleDouble = 2;
@@ -54,21 +50,16 @@ static struct StateTmpDispMain* StateTmpDispMain_Show(int);
 static struct StateTmpDispMain* StateTmpDispMain_Sleep();
 static void mark_StateTmpDispMain(struct StateTmpDispMain*, int);
 static void free_StateTmpDispMain(struct StateTmpDispMain*);
-static void init_TmpDisp_on();
-static void init_TmpDisp_off();
 static void header_init_TmpDispMain_state(struct MemoryTmpDispMain*);
-static void update_TmpDispMainShow_goSleep(struct MemoryTmpDispMain*);
-static void update_TmpDispMainShow_nextTmpHmdDispMode(struct MemoryTmpDispMain*);
 static void update_TmpDispMainShow_tmpHmdDisp(struct MemoryTmpDispMain*);
 static void update_TmpDispMainShow_state(struct MemoryTmpDispMain*);
-static void update_TmpDispMainSleep_nextTmpHmdDispMode(struct MemoryTmpDispMain*);
 static void update_TmpDispMainSleep_tmpHmdDisp(struct MemoryTmpDispMain*);
 static void update_TmpDispMainSleep_state(struct MemoryTmpDispMain*);
 static void update_TmpDispMain(struct MemoryTmpDispMain*);
 static void free_TmpDispMain(struct MemoryTmpDispMain*);
 static void refresh_mark();
 extern void input(int*, int*, struct TupleDoubleDouble**);
-extern void output(struct TupleDoubleDouble**, int*);
+extern void output(struct TupleDoubleDouble**);
 
 struct TupleDoubleDouble* TupleDoubleDouble_Cons(double member0, double member1) {
   struct TupleDoubleDouble* x;
@@ -126,18 +117,14 @@ static void update_TmpDispMain(struct MemoryTmpDispMain* memory) {
     }
     memory->state->fresh = 0;
     mark_TupleDoubleDouble(memory->tmpHmd[current_side], entry + 3);
-    mark_StateTmpDispMain(memory->state, entry + 6);
+    mark_StateTmpDispMain(memory->state, entry + 4);
     clock = entry + 2;
     update_TmpDispMainShow_tmpHmdDisp(memory);
-    mark_TupleDoubleDouble(memory->tmpHmdDisp[current_side], entry + 7);
+    mark_TupleDoubleDouble(memory->tmpHmdDisp[current_side], entry + 5);
     clock = entry + 3;
-    update_TmpDispMainShow_goSleep(memory);
-    clock = entry + 4;
-    update_TmpDispMainShow_nextTmpHmdDispMode(memory);
-    clock = entry + 5;
     update_TmpDispMainShow_state(memory);
     mark_StateTmpDispMain(memory->state, entry + clock + 1);
-    clock = entry + 6;
+    clock = entry + 4;
     memory->statebody.Show.init = 0;
   } else {
     if (memory->state->fresh) {
@@ -145,84 +132,49 @@ static void update_TmpDispMain(struct MemoryTmpDispMain* memory) {
     }
     memory->state->fresh = 0;
     mark_TupleDoubleDouble(memory->tmpHmd[current_side], entry + 2);
-    mark_StateTmpDispMain(memory->state, entry + 5);
+    mark_StateTmpDispMain(memory->state, entry + 4);
     clock = entry + 2;
     update_TmpDispMainSleep_tmpHmdDisp(memory);
-    mark_TupleDoubleDouble(memory->tmpHmdDisp[current_side], entry + 7);
+    mark_TupleDoubleDouble(memory->tmpHmdDisp[current_side], entry + 5);
     clock = entry + 3;
-    update_TmpDispMainSleep_nextTmpHmdDispMode(memory);
-    clock = entry + 4;
     update_TmpDispMainSleep_state(memory);
     mark_StateTmpDispMain(memory->state, entry + clock + 1);
-    clock = entry + 5;
+    clock = entry + 4;
     memory->statebody.Sleep.init = 0;
   }
   memory->init = 0;
 }
 
 static void update_TmpDispMainSleep_state(struct MemoryTmpDispMain* memory) {
-  struct StateTmpDispMain* _tmpvar4;
-  if (memory->show[current_side]) {
-    _tmpvar4 = StateTmpDispMain_Show(memory->clock[current_side]);
-  } else {
-    _tmpvar4 = memory->state;
-  }
-  memory->state = _tmpvar4;
-}
-
-static void update_TmpDispMainSleep_tmpHmdDisp(struct MemoryTmpDispMain* memory) {
-  memory->tmpHmdDisp[current_side] = TupleDoubleDouble_Cons(0., 0.);
-}
-
-static void update_TmpDispMainSleep_nextTmpHmdDispMode(struct MemoryTmpDispMain* memory) {
-  int _tmpvar3;
-  if (memory->show[current_side]) {
-    _tmpvar3 = TmpDisp_on;
-  } else {
-    _tmpvar3 = TmpDisp_off;
-  }
-  memory->nextTmpHmdDispMode[current_side] = _tmpvar3;
-}
-
-static void update_TmpDispMainShow_state(struct MemoryTmpDispMain* memory) {
   struct StateTmpDispMain* _tmpvar2;
-  if (memory->statebody.Show.goSleep[current_side]) {
-    _tmpvar2 = StateTmpDispMain_Sleep();
+  if (memory->show[current_side]) {
+    _tmpvar2 = StateTmpDispMain_Show(memory->clock[current_side]);
   } else {
     _tmpvar2 = memory->state;
   }
   memory->state = _tmpvar2;
 }
 
+static void update_TmpDispMainSleep_tmpHmdDisp(struct MemoryTmpDispMain* memory) {
+  memory->tmpHmdDisp[current_side] = TupleDoubleDouble_Cons(0., 0.);
+}
+
+static void update_TmpDispMainShow_state(struct MemoryTmpDispMain* memory) {
+  struct StateTmpDispMain* _tmpvar1;
+  if (((memory->clock[current_side] - memory->state->params.Show.startClock) >= 5)) {
+    _tmpvar1 = StateTmpDispMain_Sleep();
+  } else {
+    _tmpvar1 = memory->state;
+  }
+  memory->state = _tmpvar1;
+}
+
 static void update_TmpDispMainShow_tmpHmdDisp(struct MemoryTmpDispMain* memory) {
   memory->tmpHmdDisp[current_side] = memory->tmpHmd[current_side];
 }
 
-static void update_TmpDispMainShow_nextTmpHmdDispMode(struct MemoryTmpDispMain* memory) {
-  int _tmpvar1;
-  if (memory->statebody.Show.goSleep[current_side]) {
-    _tmpvar1 = TmpDisp_off;
-  } else {
-    _tmpvar1 = TmpDisp_on;
-  }
-  memory->nextTmpHmdDispMode[current_side] = _tmpvar1;
-}
-
-static void update_TmpDispMainShow_goSleep(struct MemoryTmpDispMain* memory) {
-  memory->statebody.Show.goSleep[current_side] =
-    ((memory->clock[current_side] - memory->state->params.Show.startClock) >= 5);
-}
-
 static void header_init_TmpDispMain_state(struct MemoryTmpDispMain* memory) {
   memory->state = StateTmpDispMain_Sleep();
-}
-
-static void init_TmpDisp_off() {
-  TmpDisp_off = 0;
-}
-
-static void init_TmpDisp_on() {
-  TmpDisp_on = 1;
 }
 
 static void free_StateTmpDispMain(struct StateTmpDispMain* x) {
@@ -268,8 +220,6 @@ void activate() {
   current_side = 0;
   clock = 0;
   clock = 1;
-  init_TmpDisp_on();
-  init_TmpDisp_off();
   memory.init = 1;
   while (1) {
     clock = 0;
@@ -277,8 +227,7 @@ void activate() {
     input(&memory.clock[current_side], &memory.show[current_side],
           &memory.tmpHmd[current_side]);
     update_TmpDispMain(&memory);
-    output(&memory.tmpHmdDisp[current_side],
-           &memory.nextTmpHmdDispMode[current_side]);
+    output(&memory.tmpHmdDisp[current_side]);
     clock = period;
     refresh_mark();
     current_side = !current_side;

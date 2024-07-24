@@ -379,12 +379,13 @@ void input(int* clk, int* show, struct TupleDoubleDouble** tmphmd) {
 	*tmphmd = fetch_tmphmd();
 }
 
-void output(struct TupleDoubleDouble** tmphmd, int* nextTmpHmdDispMode) {
-	static int currTmpHmdDispMode = 0;
-    if (currTmpHmdDispMode == 1) {
+void output(struct TupleDoubleDouble** tmphmd /* , int* nextTmpHmdDispMode */) {
+	// static int currTmpHmdDispMode = 0;
+    // if (currTmpHmdDispMode == 1) {
 	    display_tmphmd(*tmphmd);
-    }
+    // }
 
+	/*
 	if (currTmpHmdDispMode == 0 && *nextTmpHmdDispMode == 1)
 	{
 		turnon_lcd();
@@ -394,6 +395,7 @@ void output(struct TupleDoubleDouble** tmphmd, int* nextTmpHmdDispMode) {
 		turnoff_lcd();
 	}
 	currTmpHmdDispMode = *nextTmpHmdDispMode;
+	*/
 }
 
 #endif
@@ -466,7 +468,7 @@ int main(void)
   init_bme280(&dev);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_Base_Start_IT(&htim21);
-  // turnon_lcd();
+  turnon_lcd();
 
   activate();
   /* USER CODE END 2 */
