@@ -26,7 +26,7 @@
 #include <string.h>
 #include "bme280.h"
 
-#define USE_XCIOS
+// #define USE_XCIOS
 
 #ifdef USE_XCIOS
 #include "TmpDisp.h"
@@ -379,13 +379,12 @@ void input(int* clk, int* show, struct TupleDoubleDouble** tmphmd) {
 	*tmphmd = fetch_tmphmd();
 }
 
-void output(struct TupleDoubleDouble** tmphmd /* , int* nextTmpHmdDispMode */) {
-	// static int currTmpHmdDispMode = 0;
-    // if (currTmpHmdDispMode == 1) {
+void output(struct TupleDoubleDouble** tmphmd, int* nextTmpHmdDispMode) {
+	static int currTmpHmdDispMode = 0;
+    if (currTmpHmdDispMode == 1) {
 	    display_tmphmd(*tmphmd);
-    // }
+    }
 
-	/*
 	if (currTmpHmdDispMode == 0 && *nextTmpHmdDispMode == 1)
 	{
 		turnon_lcd();
@@ -395,7 +394,6 @@ void output(struct TupleDoubleDouble** tmphmd /* , int* nextTmpHmdDispMode */) {
 		turnoff_lcd();
 	}
 	currTmpHmdDispMode = *nextTmpHmdDispMode;
-	*/
 }
 
 #endif
